@@ -19,6 +19,9 @@ data/processed/
 # Model artifacts
 models/*.joblib
 
+# Streamlit secrets (never commit)
+.streamlit/secrets.toml
+
 # System
 .DS_Store
 Thumbs.db

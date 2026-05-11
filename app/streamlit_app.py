@@ -1,73 +1,62 @@
+"""
+Churn Intelligence — Executive AI Analytics (home) + navigasi multipage.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
 import streamlit as st
-import pandas as pd
-import joblib
-from sklearn.preprocessing import StandardScaler
 
-MODEL_PATH = "models/customer_churn_model.joblib"
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
-@st.cache_data
-def load_model(path):
-    return joblib.load(path)
+from churn_intel.auth import auth_enabled, login_form, logout_button
+from churn_intel.streamlit_io import load_customer_table, load_pipeline
+from churn_intel.ui_theme import inject_styles
+from dashboard.executive_app import render_executive_dashboard
+from dashboard.styles.executive_css import inject_executive_css
 
-@st.cache_data
-def load_sample_data():
-    return pd.DataFrame(
-        [
-            {
-                "customer_age": 35,
-                "account_balance": 54000,
-                "tenure_months": 24,
-                "total_transactions": 12,
-                "is_premium": "no",
-                "support_tickets": 1,
-                "avg_order_value": 185.0,
-            }
-        ]
-    )
-
-st.title("Dashboard Prediksi Churn Pelanggan")
-st.markdown(
-    "Gunakan antarmuka ini untuk melihat bagaimana fitur pelanggan berdampak pada prediksi churn."
+st.set_page_config(
+    page_title="Churn Intelligence",
+    page_icon="◆",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
+inject_styles()
+inject_executive_css()
 
-model = load_model(MODEL_PATH)
-input_data = load_sample_data()
+if not login_form():
+    st.stop()
 
-with st.form("input_form"):
-    st.subheader("Input Data Pelanggan")
-    customer_age = st.number_input("Usia pelanggan", min_value=18, max_value=90, value=35)
-    account_balance = st.number_input("Saldo akun", min_value=0, value=54000)
-    tenure_months = st.number_input("Lama langganan (bulan)", min_value=0, max_value=120, value=24)
-    total_transactions = st.number_input("Total transaksi", min_value=0, max_value=200, value=12)
-    is_premium = st.selectbox("Member premium?", ["yes", "no"])
-    support_tickets = st.number_input("Jumlah tiket dukungan", min_value=0, max_value=20, value=1)
-    avg_order_value = st.number_input("Nilai pesanan rata-rata", min_value=0.0, value=185.0)
-    submit = st.form_submit_button("Prediksi Churn")
+pipe = load_pipeline()
+df = load_customer_table()
 
-if submit:
-    sample = pd.DataFrame(
-        [
-            {
-                "customer_age": customer_age,
-                "account_balance": account_balance,
-                "tenure_months": tenure_months,
-                "total_transactions": total_transactions,
-                "is_premium": is_premium,
-                "support_tickets": support_tickets,
-                "avg_order_value": avg_order_value,
-            }
-        ]
+with st.sidebar:
+    st.markdown("### Churn Intelligence")
+    st.caption("Enterprise AI / DS portfolio")
+    st.markdown("---")
+    if auth_enabled():
+        st.caption(f"Role: **{st.session_state.get('_ci_role', 'analyst')}**")
+        logout_button()
+    st.markdown("---")
+    st.markdown(
+        "**Halaman:** gunakan daftar di atas area konten utama, atau navigasi multipage di sidebar. "
+        "**Prediksi · Explainability · Analytics** tersedia sebagai halaman terpisah."
     )
-    prediction = model.predict(sample)
-    probability = model.predict_proba(sample)[:, 1][0]
 
-    st.write("## Hasil Prediksi")
-    st.write("- Prediksi churn: **Ya**" if prediction[0] == 1 else "- Prediksi churn: **Tidak**")
-    st.write(f"- Probabilitas churn: **{probability:.2%}**")
-    st.write(
-        "Gunakan hasil ini untuk menentukan pelanggan yang perlu ditangani oleh tim retensi."
+if pipe is None:
+    st.warning(
+        "Model `models/customer_churn_model.joblib` belum ditemukan — skor churn memakai heuristik label. "
+        "Train dari notebook lalu simpan ke `models/`."
     )
+
+render_executive_dashboard(df, pipe)
 
 st.markdown("---")
-st.write("## Contoh Data Pelanggan")
-st.dataframe(input_data)
+st.info(
+    "**Halaman lanjutan:** **02 Prediksi & What-if** · **03 Explainability (SHAP)** · "
+    "**04 Analytics** · **05 Model & Data** · **06 History & Export**."
+)

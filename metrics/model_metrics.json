@@ -1,0 +1,14 @@
+{
+  "accuracy": 0.87,
+  "precision": 0.84,
+  "recall": 0.81,
+  "f1": 0.825,
+  "roc_auc": 0.91,
+  "cv_mean": 0.86,
+  "cv_std": 0.02,
+  "train_accuracy": 0.94,
+  "test_accuracy": 0.87,
+  "notes": "Nilai contoh — timbang ulang dari notebook setelah training dan ganti dengan metrik sebenarnya.",
+  "threshold_default": 0.5,
+  "calibration": "Isotonic calibration disarankan jika probabilitas dipakai untuk budgeting risiko."
+}
