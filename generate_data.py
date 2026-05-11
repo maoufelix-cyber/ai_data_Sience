@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from churn_intel.synthetic_data import create_synthetic_churn_data
+from churn_intel.synthetic_data import create_synthetic_customer_data
 from churn_intel.settings import CUSTOMERS_CSV, DATA_RAW_DIR
 
 
@@ -47,7 +47,7 @@ def main():
     
     # Generate data
     print(f"🔄 Generating {n_samples:,} synthetic customer records...")
-    df = create_synthetic_churn_data(n_samples=n_samples)
+    df = create_synthetic_customer_data(n_samples=n_samples)
     
     # Save
     df.to_csv(CUSTOMERS_CSV, index=False)
@@ -57,7 +57,7 @@ def main():
     print(f"\n📊 Dataset Statistics:")
     print(f"   • Lokasi: {CUSTOMERS_CSV}")
     print(f"   • Total records: {len(df):,}")
-    print(f"   • Churn rate: {df['churn'].mean():.1%}")
+    print(f"   • Response rate: {df['Response'].mean():.1%}")
     print(f"   • Kolom: {', '.join(df.columns)}")
     print(f"\n   Kolom detail:")
     for col in df.columns:

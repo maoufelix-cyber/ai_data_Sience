@@ -1,102 +1,158 @@
-"""Rule-based AI executive insights from population + scores."""
+"""Rule-based AI executive insights for customer personality analysis."""
 
 from __future__ import annotations
 
 import pandas as pd
 
 
-def executive_summary_paragraph(df: pd.DataFrame, prev_churn_rate: float | None) -> str:
-    """Generate executive summary from population metrics (always returns float scalars)."""
+def executive_summary_paragraph(df: pd.DataFrame, prev_response_rate: float | None) -> str:
+    """Generate executive summary from population metrics for marketing campaigns."""
     n = len(df)
-    # Ensure churn is a float scalar, not Series
-    churn = float(df["churn"].mean()) if "churn" in df.columns and len(df) > 0 else 0.0
+    response_rate = float(df["Response"].mean()) if "Response" in df.columns and len(df) > 0 else 0.0
     parts = []
-    
-    if prev_churn_rate is not None and prev_churn_rate > 0:
-        delta = (churn - prev_churn_rate) / prev_churn_rate * 100
+
+    if prev_response_rate is not None and prev_response_rate > 0:
+        delta = (response_rate - prev_response_rate) / prev_response_rate * 100
         if abs(delta) >= 2:
-            parts.append(f"Churn **{'naik' if delta > 0 else 'turun'} {abs(delta):.1f}%** dibanding baseline periode pembanding.")
-    
-    if "is_premium" in df.columns and "churn" in df.columns:
-        # Get scalar float for non-premium churn rate
-        non_premium_mask = df["is_premium"].astype(str).str.lower().eq("no")
-        if non_premium_mask.any():
-            cr_np = float(df.loc[non_premium_mask, "churn"].mean())
-            share = float((df["is_premium"].astype(str).str.lower().ne("yes")).mean())
-            parts.append(f"Pelanggan **non-premium** (~{share:.0%} populasi) memiliki churn rate **{cr_np:.1%}**.")
-    
-    if "tenure_months" in df.columns and "churn" in df.columns:
-        short = df["tenure_months"] < 6
-        if short.any():
-            cr_s = float(df.loc[short, "churn"].mean())
-            parts.append(f"Tenure **< 6 bulan** menunjukkan churn **{cr_s:.1%}** — fase onboarding kritis.")
-    
-    if "support_tickets" in df.columns and "churn" in df.columns:
-        hi = df["support_tickets"] >= 3
-        if hi.any():
-            cr_h = float(df.loc[hi, "churn"].mean())
-            parts.append(f"Support ticket **tinggi (≥3)** berkorelasi dengan churn **{cr_h:.1%}**.")
-    
+            parts.append(f"Response rate **{'naik' if delta > 0 else 'turun'} {abs(delta):.1f}%** dibanding baseline periode pembanding.")
+
+    # Campaign acceptance analysis
+    campaign_cols = ["AcceptedCmp1", "AcceptedCmp2", "AcceptedCmp3", "AcceptedCmp4", "AcceptedCmp5"]
+    available_campaigns = [col for col in campaign_cols if col in df.columns]
+    if available_campaigns:
+        acceptance_rates = df[available_campaigns].mean()
+        best_campaign = acceptance_rates.idxmax() if not acceptance_rates.empty else None
+        best_rate = float(acceptance_rates.max()) if not acceptance_rates.empty else 0.0
+        if best_rate > 0:
+            parts.append(f"Campaign **{best_campaign}** memiliki acceptance rate tertinggi **{best_rate:.1%}**.")
+
+    # Spending analysis
+    spending_cols = ["MntWines", "MntFruits", "MntMeatProducts", "MntFishProducts",
+                     "MntSweetProducts", "MntGoldProds"]
+    available_spending = [col for col in spending_cols if col in df.columns]
+    if available_spending:
+        total_spending = df[available_spending].sum(axis=1)
+        avg_spending = float(total_spending.mean())
+        parts.append(f"Rata-rata spending pelanggan **${avg_spending:,.0f}** per kategori produk.")
+
+    # Recency analysis
+    if "Recency" in df.columns:
+        avg_recency = float(df["Recency"].mean())
+        parts.append(f"Rata-rata recency **{avg_recency:.0f} hari** sejak pembelian terakhir.")
+
+    # Income analysis
+    if "Income" in df.columns:
+        avg_income = float(df["Income"].fillna(df["Income"].median()).mean())
+        parts.append(f"Income rata-rata pelanggan **${avg_income:,.0f}**.")
+
     if not parts:
-        parts.append(f"Populasi **{n:,}** pelanggan stabil; pantau segment risiko menengah secara berkala.")
-    
+        parts.append(f"Populasi **{n:,}** pelanggan aktif; fokus pada campaign optimization dan customer engagement.")
+
     return " ".join(parts)
 
 
 def insight_feed(df: pd.DataFrame) -> list[tuple[str, str]]:
-    """List of (severity, markdown) for cards: info | warn | danger.
-    
-    Always returns float scalars for metrics, never Series.
-    """
+    """List of (severity, markdown) for cards: info | warn | danger."""
     out: list[tuple[str, str]] = []
-    
-    if "churn" in df.columns and "is_premium" in df.columns:
-        non_premium_mask = df["is_premium"].astype(str).str.lower().eq("no")
-        if non_premium_mask.any():
-            p_np = float(df.loc[non_premium_mask, "churn"].mean())
-            if p_np >= 0.35:
-                out.append(("warn", f"**{p_np:.0%}** churn berasal dari konteks non-premium — pertimbangkan upsell."))
-    
-    if "churn_proba" in df.columns:
-        hi = float((df["churn_proba"] >= 0.65).mean())
-        out.append(("info", f"**{hi:.1%}** pelanggan berada di zona proba churn tinggi (model)."))
-    
-    if "churn" in df.columns and "support_tickets" in df.columns:
-        corr_result = df[["support_tickets", "churn"]].corr()
-        if not corr_result.empty:
-            c = float(corr_result.iloc[0, 1])
-            if c == c and abs(c) >= 0.08:  # c == c checks for NaN
-                out.append(("warn", f"Tiket support berkorelasi dengan churn (**r ≈ {c:.2f}**)."))
-    
-    if "tenure_months" in df.columns and "churn" in df.columns:
-        short_mask = df["tenure_months"] < 6
-        if short_mask.any():
-            cr = float(df.loc[short_mask, "churn"].mean())
-            severity = "danger" if cr > 0.4 else "info"
-            out.append((severity, f"Tenure < 6 bln: churn **{cr:.1%}** — prioritas retensi dini."))
-    
+
+    # Response rate analysis
+    if "Response" in df.columns:
+        response_rate = float(df["Response"].mean())
+        if response_rate < 0.1:
+            out.append(("warn", f"Response rate **{response_rate:.1%}** rendah — perlu optimasi campaign targeting."))
+        elif response_rate > 0.2:
+            out.append(("info", f"Response rate **{response_rate:.1%}** baik — campaign strategy efektif."))
+
+    # Campaign acceptance patterns
+    campaign_cols = ["AcceptedCmp1", "AcceptedCmp2", "AcceptedCmp3", "AcceptedCmp4", "AcceptedCmp5"]
+    available_campaigns = [col for col in campaign_cols if col in df.columns]
+    if available_campaigns:
+        acceptance_rates = df[available_campaigns].mean()
+        low_acceptance = acceptance_rates[acceptance_rates < 0.05]
+        if not low_acceptance.empty:
+            campaign = low_acceptance.index[0]
+            rate = float(low_acceptance.iloc[0])
+            out.append(("warn", f"Campaign **{campaign}** acceptance rendah (**{rate:.1%}**) — evaluasi konten/messaging."))
+
+    # Spending concentration
+    spending_cols = ["MntWines", "MntFruits", "MntMeatProducts", "MntFishProducts",
+                     "MntSweetProducts", "MntGoldProds"]
+    available_spending = [col for col in spending_cols if col in df.columns]
+    if available_spending:
+        spending_by_category = df[available_spending].mean()
+        top_category = spending_by_category.idxmax() if not spending_by_category.empty else None
+        top_amount = float(spending_by_category.max()) if not spending_by_category.empty else 0.0
+        if top_amount > 0:
+            out.append(("info", f"Kategori **{top_category}** dominan dengan spending rata-rata **${top_amount:.0f}**."))
+
+    # Recency insights
+    if "Recency" in df.columns:
+        high_recency = (df["Recency"] > 60).mean()
+        if high_recency > 0.3:
+            out.append(("danger", f"**{high_recency:.1%}** pelanggan belum berbelanja >60 hari — risiko churn tinggi."))
+
+    # Income segmentation
+    if "Income" in df.columns:
+        income = df["Income"].fillna(df["Income"].median())
+        high_income_response = df.loc[income > income.median(), "Response"].mean()
+        low_income_response = df.loc[income <= income.median(), "Response"].mean()
+        if high_income_response > low_income_response + 0.05:
+            out.append(("info", "Pelanggan high-income lebih responsif — fokus targeting premium segments."))
+
+    # Family composition insights
+    if "Kidhome" in df.columns and "Teenhome" in df.columns:
+        families_with_kids = ((df["Kidhome"] + df["Teenhome"]) > 0).mean()
+        if families_with_kids > 0.5:
+            out.append(("info", f"**{families_with_kids:.1%}** pelanggan memiliki anak — opportunity untuk family-oriented campaigns."))
+
     out.append(("info", "Gunakan halaman **Explainability** untuk faktor SHAP per skenario prediksi."))
     return out[:10]
 
 
 def action_recommendations(df: pd.DataFrame) -> list[tuple[str, str, str]]:
-    """(priority, title, body) - always returns float scalars."""
+    """(priority, title, body) recommendations."""
     recs: list[tuple[str, str, str]] = []
-    
-    if "churn_proba" in df.columns and len(df) > 0:
-        mean_proba = float(df["churn_proba"].mean())
-        if mean_proba >= 0.35:
-            recs.append(("HIGH", "Retention wave", "Luncurkan kampanye retention terarah ke segmen proba ≥ 0.35."))
-    
-    if "total_transactions" in df.columns and len(df) > 0:
-        mean_tx = float(df["total_transactions"].mean())
-        if mean_tx < 10:
-            recs.append(("MED", "Repeat order", "Aktifkan promo repeat purchase untuk meningkatkan frekuensi transaksi."))
-    
-    if "is_premium" in df.columns and len(df) > 0:
-        non_premium_share = float((df["is_premium"].astype(str).str.lower().eq("no")).mean())
-        if non_premium_share > 0.65:
-            recs.append(("MED", "Premium upsell", "Bundling premium untuk pelanggan bernilai namun belum premium."))
+
+    # Response rate optimization
+    if "Response" in df.columns:
+        response_rate = float(df["Response"].mean())
+        if response_rate < 0.15:
+            recs.append(("HIGH", "Campaign Optimization", "Tingkatkan targeting precision dan personalize messaging untuk meningkatkan response rate."))
+
+    # Campaign sequencing
+    campaign_cols = ["AcceptedCmp1", "AcceptedCmp2", "AcceptedCmp3", "AcceptedCmp4", "AcceptedCmp5"]
+    available_campaigns = [col for col in campaign_cols if col in df.columns]
+    if available_campaigns and len(available_campaigns) > 1:
+        acceptance_corr = df[available_campaigns].corr()
+        if not acceptance_corr.empty:
+            # Find campaigns that work well together
+            high_corr = acceptance_corr.where(np.triu(np.ones_like(acceptance_corr), k=1).astype(bool))
+            max_corr_idx = high_corr.stack().idxmax() if not high_corr.stack().empty else None
+            if max_corr_idx:
+                recs.append(("MED", "Campaign Sequencing", f"Campaign {max_corr_idx[0]} dan {max_corr_idx[1]} memiliki sinergi — buat campaign sequence."))
+
+    # Spending-based targeting
+    spending_cols = ["MntWines", "MntFruits", "MntMeatProducts", "MntFishProducts",
+                     "MntSweetProducts", "MntGoldProds"]
+    available_spending = [col for col in spending_cols if col in df.columns]
+    if available_spending:
+        total_spending = df[available_spending].sum(axis=1)
+        high_spenders = (total_spending > total_spending.quantile(0.8)).mean()
+        if high_spenders > 0.1:
+            recs.append(("MED", "High-Value Targeting", f"**{high_spenders:.1%}** high-spenders identified — develop exclusive loyalty program."))
+
+    # Recency-based reactivation
+    if "Recency" in df.columns:
+        dormant = (df["Recency"] > 90).mean()
+        if dormant > 0.2:
+            recs.append(("HIGH", "Reactivation Campaign", f"**{dormant:.1%}** pelanggan dormant >90 hari — launch win-back campaign dengan special offers."))
+
+    # Demographic targeting
+    if "Education" in df.columns and "Response" in df.columns:
+        education_response = df.groupby("Education")["Response"].mean()
+        best_education = education_response.idxmax() if not education_response.empty else None
+        if best_education:
+            recs.append(("LOW", "Demographic Targeting", f"Segment **{best_education}** menunjukkan response tertinggi — optimize messaging untuk demographic ini."))
     
     if "support_tickets" in df.columns and len(df) > 0:
         mean_tickets = float(df["support_tickets"].mean())

@@ -1,4 +1,4 @@
-"""Executive KPI computations & comparisons."""
+"""Executive KPI computations for customer personality analysis."""
 
 from __future__ import annotations
 
@@ -25,64 +25,89 @@ def safe_delta(cur: float, prev: float) -> tuple[float, bool | None]:
     return d, d >= 0
 
 
-def retention_score(mean_proba: float) -> float:
-    """Convert churn probability to retention score (0-100)."""
-    p = float(mean_proba)  # Ensure scalar
-    return float(np.clip((1.0 - p) * 100, 0, 100))
-
-
-def revenue_at_risk(df: pd.DataFrame, proba_col: str = "churn_proba") -> float:
-    """Calculate 6-month revenue at risk from churn."""
-    if proba_col not in df.columns:
+def response_rate(df: pd.DataFrame) -> float:
+    """Calculate campaign response rate (0-100)."""
+    if "Response" not in df.columns:
         return 0.0
-    proba = pd.to_numeric(df[proba_col], errors="coerce").fillna(0)
-    aov = pd.to_numeric(df.get("avg_order_value", 0), errors="coerce").fillna(0)
-    result = float((proba * aov * 6).sum())
+    response_rate = float(df["Response"].mean() * 100)
+    return response_rate
+
+
+def total_revenue(df: pd.DataFrame) -> float:
+    """Calculate total revenue from all product categories."""
+    spending_cols = ["MntWines", "MntFruits", "MntMeatProducts", "MntFishProducts",
+                     "MntSweetProducts", "MntGoldProds"]
+    available_cols = [col for col in spending_cols if col in df.columns]
+    if not available_cols:
+        return 0.0
+    total = float(df[available_cols].sum().sum())
+    return total
+
+
+def avg_customer_value(df: pd.DataFrame) -> float:
+    """Calculate average customer lifetime value based on total spending."""
+    spending_cols = ["MntWines", "MntFruits", "MntMeatProducts", "MntFishProducts",
+                     "MntSweetProducts", "MntGoldProds"]
+    available_cols = [col for col in spending_cols if col in df.columns]
+    if not available_cols:
+        return 0.0
+    total_spending = df[available_cols].sum(axis=1)
+    result = float(total_spending.mean())
     return result
 
 
-def clv_estimate(df: pd.DataFrame) -> float:
-    """Estimate customer lifetime value."""
-    if "avg_order_value" not in df.columns or "total_transactions" not in df.columns:
+def campaign_acceptance_rate(df: pd.DataFrame) -> float:
+    """Calculate overall campaign acceptance rate."""
+    campaign_cols = ["AcceptedCmp1", "AcceptedCmp2", "AcceptedCmp3", "AcceptedCmp4", "AcceptedCmp5"]
+    available_cols = [col for col in campaign_cols if col in df.columns]
+    if not available_cols:
         return 0.0
-    aov = pd.to_numeric(df["avg_order_value"], errors="coerce").fillna(0)
-    tx = pd.to_numeric(df["total_transactions"], errors="coerce").fillna(0)
-    result = float((aov * tx * 0.18).mean())
+    acceptance_rate = float(df[available_cols].mean().mean() * 100)
+    return acceptance_rate
+
+
+def customer_engagement_score(df: pd.DataFrame) -> float:
+    """Calculate customer engagement score (0-100) based on purchases and recency."""
+    if "Recency" not in df.columns or "Total_Purchases" not in df.columns:
+        # Fallback to available metrics
+        purchase_cols = ["NumDealsPurchases", "NumWebPurchases", "NumCatalogPurchases", "NumStorePurchases"]
+        available_cols = [col for col in purchase_cols if col in df.columns]
+        if available_cols:
+            total_purchases = df[available_cols].sum(axis=1)
+            recency_score = 100 - (df.get("Recency", 50) / 100 * 100) if "Recency" in df.columns else 50
+            engagement = (total_purchases / total_purchases.max() * 50) + (recency_score * 0.5)
+            return float(engagement.mean())
+        return 50.0
+
+    # Recency score (lower recency = higher score)
+    recency_score = 100 - (df["Recency"] / df["Recency"].max() * 100)
+
+    # Purchase frequency score
+    purchase_score = (df["Total_Purchases"] / df["Total_Purchases"].max() * 100)
+
+    # Combined engagement score
+    engagement = (recency_score * 0.4 + purchase_score * 0.6)
+    result = float(engagement.mean())
     return result
 
 
-def support_ratio(df: pd.DataFrame) -> float:
-    """Calculate support ticket ratio per transaction."""
-    if "support_tickets" not in df.columns or "total_transactions" not in df.columns:
+def income_distribution_score(df: pd.DataFrame) -> float:
+    """Calculate income diversity score (0-100, higher = more diverse)."""
+    if "Income" not in df.columns:
         return 0.0
-    st_ = pd.to_numeric(df["support_tickets"], errors="coerce").fillna(0)
-    tr = pd.to_numeric(df["total_transactions"], errors="coerce").replace(0, np.nan)
-    result = float((st_ / tr).fillna(0).mean())
-    return result
+    income = pd.to_numeric(df["Income"], errors="coerce").fillna(df["Income"].median())
+    if income.std() == 0:
+        return 0.0
+    # Coefficient of variation as diversity measure
+    cv = float(income.std() / income.mean())
+    score = float(np.clip(cv * 50, 0, 100))  # Scale to 0-100
+    return score
 
 
-def satisfaction_index(df: pd.DataFrame) -> float:
-    """Heuristic 0–100: lower tickets + higher tenure + premium (float scalar).
-    
-    Combines:
-    - Tenure score (35% weight): normalized 0-72 months
-    - Support inverse score (45% weight): 1 - (tickets / 15) capped
-    - Premium flag (20% weight): 1 if premium, 0 if not
-    
-    Always returns a single float value, never a Series.
-    """
-    # Get Series data, ensure they're numeric
-    t = pd.to_numeric(df.get("tenure_months", 0), errors="coerce").fillna(0).clip(0, 72) / 72
-    tk = 1 - pd.to_numeric(df.get("support_tickets", 0), errors="coerce").fillna(0).clip(0, 15) / 15
-    pr = df.get("is_premium", "no").astype(str).str.lower().eq("yes").astype(float)
-    
-    # Calculate weighted score (works on Series)
-    score = ((t * 0.35 + tk * 0.45 + pr * 0.2) * 100).clip(lower=0, upper=100)
-    
-    # Handle edge cases
-    if score.empty:
+def family_composition_index(df: pd.DataFrame) -> float:
+    """Calculate family composition diversity index."""
+    if "Kidhome" not in df.columns or "Teenhome" not in df.columns:
         return 0.0
-    
-    # Always return scalar float
-    result = float(score.mean())
-    return result
+    family_size = df["Kidhome"] + df["Teenhome"]
+    diversity = float(family_size.value_counts().count() / len(family_size.unique()) * 100)
+    return diversity

@@ -28,12 +28,12 @@ from dashboard.services.filters import apply_filters, render_sidebar_filters
 from dashboard.services.insights import action_recommendations, executive_summary_paragraph, insight_feed
 from dashboard.services.metrics import (
     add_synthetic_month,
-    clv_estimate,
-    retention_score,
-    revenue_at_risk,
-    satisfaction_index,
+    avg_customer_value,
+    campaign_acceptance_rate,
+    customer_engagement_score,
+    response_rate,
     split_compare,
-    support_ratio,
+    total_revenue,
 )
 from dashboard.services.scoring import score_dataframe
 from dashboard.services.sparkline import sparkline_svg
@@ -65,53 +65,56 @@ def render_executive_dashboard(df: pd.DataFrame, pipe: Any | None) -> None:
         df_f = base
 
     h1, h2 = split_compare(df_f)
-    
-    # Calculate churn rate - ensure float scalar
-    prev_churn = float(h1["churn"].mean()) if "churn" in h1.columns and len(h1) > 0 else None
-    churn_rate = float(df_f["churn"].mean()) if "churn" in df_f.columns and len(df_f) > 0 else 0.0
-    
+
+    # Calculate response rate - ensure float scalar
+    prev_response = float(h1["Response"].mean()) if "Response" in h1.columns and len(h1) > 0 else None
+    response_rate_val = float(df_f["Response"].mean()) if "Response" in df_f.columns and len(df_f) > 0 else 0.0
+
     # Calculate delta percentage - ensure float scalar
-    if prev_churn is not None and prev_churn > 0:
-        delta_pct = (churn_rate - prev_churn) / prev_churn * 100
+    if prev_response is not None and prev_response > 0:
+        delta_pct = (response_rate_val - prev_response) / prev_response * 100
     else:
         delta_pct = 0.0
     delta_pct = float(delta_pct)  # Ensure scalar
 
     n = len(df_f)
-    mean_proba = float(df_f["churn_proba"].mean()) if "churn_proba" in df_f.columns and len(df_f) > 0 else churn_rate
-    rar = revenue_at_risk(df_f)
-    clv = clv_estimate(df_f)
-    ret = retention_score(mean_proba)
-    prem_users = int(df_f["is_premium"].astype(str).str.lower().eq("yes").sum()) if "is_premium" in df_f.columns else 0
-    
-    # Calculate ARPU - ensure float scalar
-    if "avg_order_value" in df_f.columns and "churn_proba" in df_f.columns and n > 0:
-        aov_vals = pd.to_numeric(df_f.get("avg_order_value", 0), errors="coerce").fillna(0)
-        arpu = float((aov_vals * df_f["churn_proba"]).sum() / max(n, 1))
+    total_rev = total_revenue(df_f)
+    avg_cust_val = avg_customer_value(df_f)
+    campaign_acc_rate = campaign_acceptance_rate(df_f)
+    engagement_score = customer_engagement_score(df_f)
+
+    # Calculate high-value customers (top 25% by spending)
+    spending_cols = ["MntWines", "MntFruits", "MntMeatProducts", "MntFishProducts",
+                     "MntSweetProducts", "MntGoldProds"]
+    available_spending = [col for col in spending_cols if col in df_f.columns]
+    if available_spending:
+        total_spending = df_f[available_spending].sum(axis=1)
+        high_value_pct = (total_spending > total_spending.quantile(0.75)).mean()
+        high_value_customers = int(high_value_pct * n)
     else:
-        arpu = 0.0
+        high_value_customers = 0
 
     # --- HERO
-    summary = executive_summary_paragraph(df_f, prev_churn)
+    summary = executive_summary_paragraph(df_f, prev_response)
     st.markdown(
         f"""
         <div class="exec-hero-shell">
-          <div class="exec-hero-title">Executive AI Analytics</div>
+          <div class="exec-hero-title">Customer Personality Analytics</div>
           <p style="color:#94a3b8;margin:0.5rem 0 0 0;font-size:0.95rem;">{summary}</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    spark_vals = [float(x) for x in np.linspace(max(0.05, churn_rate - 0.08), churn_rate + 0.02, 8)]
+    spark_vals = [float(x) for x in np.linspace(max(0.05, response_rate_val - 0.08), response_rate_val + 0.02, 8)]
 
     hero_cols = st.columns(5)
     metrics_hero = [
         ("Total pelanggan", f"{n:,}", None, None, "👥"),
-        ("Revenue at risk (6m)", f"${rar:,.0f}", f"Churn mom {delta_pct:+.1f}%*", delta_pct <= 0, "💸"),
-        ("Retention score", f"{ret:.0f}/100", None, None, "🛡️"),
-        ("CLV rata-rata (proxy)", f"${clv:,.0f}", None, None, "💎"),
-        ("Premium aktif", f"{prem_users:,}", None, None, "⭐"),
+        ("Total revenue", f"${total_rev:,.0f}", f"Response mom {delta_pct:+.1f}%*", delta_pct >= 0, "💸"),
+        ("Response rate", f"{response_rate_val:.1%}", None, None, "🎯"),
+        ("Avg customer value", f"${avg_cust_val:,.0f}", None, None, "💎"),
+        ("High-value customers", f"{high_value_customers:,}", None, None, "⭐"),
     ]
     for col, (lab, val, dlt, dpos, ic) in zip(hero_cols, metrics_hero):
         with col:
@@ -160,7 +163,7 @@ def render_executive_dashboard(df: pd.DataFrame, pipe: Any | None) -> None:
         pass
 
     if view == "Summary":
-        _tab_summary(df_f, churn_rate, prev_churn, mean_proba, arpu)
+        _tab_summary(df_f, response_rate_val, prev_response, total_rev, avg_cust_val)
     elif view == "Analytics":
         _tab_analytics(df_f)
     elif view == "Intelligence":
@@ -171,7 +174,7 @@ def render_executive_dashboard(df: pd.DataFrame, pipe: Any | None) -> None:
         _tab_live(df_f, mean_proba)
 
 
-def _tab_summary(df_f: pd.DataFrame, churn_rate: float, prev_churn: float | None, mean_proba: float, arpu: float) -> None:
+def _tab_summary(df_f: pd.DataFrame, response_rate_val: float, prev_response: float | None, total_rev: float, avg_cust_val: float) -> None:
     st.subheader("Advanced KPI cards")
     prev_h1, _prev_h2 = split_compare(df_f)
 
@@ -179,27 +182,37 @@ def _tab_summary(df_f: pd.DataFrame, churn_rate: float, prev_churn: float | None
         if prev is None or prev == 0:
             return None, None
         p = (cur - prev) / abs(prev) * 100
-        return f"{p:+.1f}% vs baseline", p <= 0
+        return f"{p:+.1f}% vs baseline", p >= 0  # Positive change is good for response rate
 
-    churn_prev = float(prev_h1["churn"].mean()) if "churn" in prev_h1.columns else churn_rate
-    tx_prev = float(pd.to_numeric(prev_h1.get("total_transactions"), errors="coerce").mean())
-    tx_cur = float(pd.to_numeric(df_f.get("total_transactions"), errors="coerce").mean())
-    sup_prev = support_ratio(prev_h1)
-    sup_cur = support_ratio(df_f)
-    sat = satisfaction_index(df_f)
-    ret_cur = 1.0 - churn_rate
-    ret_prev = 1.0 - churn_prev if churn_prev is not None else ret_cur
+    response_prev = float(prev_h1["Response"].mean()) if "Response" in prev_h1.columns else response_rate_val
+    rev_prev = total_revenue(prev_h1)
+    rev_cur = total_rev
+    acc_prev = campaign_acceptance_rate(prev_h1)
+    acc_cur = campaign_acceptance_rate(df_f)
+    eng_cur = customer_engagement_score(df_f)
+
+    # Calculate spending metrics
+    spending_cols = ["MntWines", "MntFruits", "MntMeatProducts", "MntFishProducts",
+                     "MntSweetProducts", "MntGoldProds"]
+    available_spending = [col for col in spending_cols if col in df_f.columns]
+    if available_spending:
+        total_spending = df_f[available_spending].sum(axis=1)
+        avg_spending = float(total_spending.mean())
+        spending_prev = prev_h1[available_spending].sum(axis=1).mean() if available_spending[0] in prev_h1.columns else avg_spending
+    else:
+        avg_spending = 0.0
+        spending_prev = 0.0
 
     strokes = ["#fb7185", "#22d3ee", "#818cf8", "#34d399", "#fbbf24", "#4ade80", "#38bdf8", "#c084fc"]
     kpis = [
-        ("Churn rate", f"{churn_rate:.1%}", *d(churn_rate, churn_prev)),
-        ("Active users", f"{len(df_f):,}", None, None),
-        ("Avg revenue / user", f"${arpu:.0f}", None, None),
-        ("Avg tenure", f"{df_f['tenure_months'].mean():.1f} bln" if "tenure_months" in df_f.columns else "—", None, None),
-        ("Support ratio", f"{sup_cur:.2f}", *d(sup_cur, sup_prev)),
-        ("Retention rate", f"{ret_cur:.1%}", *d(ret_cur, ret_prev)),
-        ("Monthly tx (avg)", f"{tx_cur:.1f}", *d(tx_cur, tx_prev)),
-        ("Satisfaction idx", f"{sat:.0f}", None, None),
+        ("Response rate", f"{response_rate_val:.1%}", *d(response_rate_val, response_prev)),
+        ("Active customers", f"{len(df_f):,}", None, None),
+        ("Total revenue", f"${rev_cur:,.0f}", *d(rev_cur, rev_prev)),
+        ("Avg spending", f"${avg_spending:.0f}", *d(avg_spending, spending_prev)),
+        ("Campaign acceptance", f"{acc_cur:.1%}", *d(acc_cur, acc_prev)),
+        ("Engagement score", f"{eng_cur:.0f}/100", None, None),
+        ("High-value customers", f"{high_value_customers:,}", None, None),
+        ("Avg customer value", f"${avg_cust_val:,.0f}", None, None),
     ]
     r1 = st.columns(4)
     r2 = st.columns(4)
@@ -214,24 +227,47 @@ def _tab_summary(df_f: pd.DataFrame, churn_rate: float, prev_churn: float | None
             st.markdown(kpi_html(lab, val, dlt, dpos, sp, "●"), unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("Executive risk panel")
+    st.subheader("Campaign performance panel")
     c1, c2 = st.columns([1, 1])
     with c1:
-        st.plotly_chart(fig_gauge_risk(mean_proba), use_container_width=True, config={"displayModeBar": False})
-        st.progress(min(1.0, mean_proba), text=f"Churn pressure index ({mean_proba:.1%})")
+        # Create a simple gauge for response rate
+        fig_gauge = {
+            "data": [{
+                "type": "indicator",
+                "mode": "gauge+number",
+                "value": response_rate_val * 100,
+                "title": {"text": "Response Rate"},
+                "gauge": {
+                    "axis": {"range": [0, 30]},
+                    "bar": {"color": "#22d3ee"},
+                    "steps": [
+                        {"range": [0, 10], "color": "#fee2e2"},
+                        {"range": [10, 20], "color": "#fef3c7"},
+                        {"range": [20, 30], "color": "#d1fae5"}
+                    ]
+                }
+            }],
+            "layout": {"height": 200, "margin": {"t": 50, "b": 0, "l": 0, "r": 0}}
+        }
+        st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
+        st.progress(min(1.0, response_rate_val), text=f"Campaign response rate ({response_rate_val:.1%})")
     with c2:
-        st.metric("Revenue at risk (6m est.)", f"${revenue_at_risk(df_f):,.0f}")
-        st.metric("Retention opportunity", f"{(1 - mean_proba) * len(df_f) * clv_estimate(df_f) / max(len(df_f),1):,.0f} $ proxy")
-        if mean_proba >= 0.35:
-            st.error("Alert: tekanan churn agregat menengah–tinggi.")
+        st.metric("Total campaign revenue", f"${total_rev:,.0f}")
+        st.metric("Avg customer value", f"${avg_cust_val:,.0f}")
+        st.metric("Campaign acceptance rate", f"{acc_cur:.1%}")
+        if response_rate_val >= 0.15:
+            st.success("Campaign performance: excellent.")
+        elif response_rate_val >= 0.10:
+            st.info("Campaign performance: good.")
         else:
-            st.success("Alert level: terkendali.")
+            st.warning("Campaign performance: needs optimization.")
 
+    # Campaign trend chart
     st.altair_chart(
-        alt.Chart(pd.DataFrame({"m": range(1, 13), "v": np.clip(np.random.default_rng(7).normal(mean_proba, 0.04, 12), 0.02, 0.9)}))
+        alt.Chart(pd.DataFrame({"month": range(1, 13), "response": np.clip(np.random.default_rng(7).normal(response_rate_val, 0.02, 12), 0.02, 0.3)}))
         .mark_line(point=True, color="#22d3ee")
-        .encode(x="m:O", y="v:Q", tooltip=["m", alt.Tooltip("v:Q", format=".2f")])
-        .properties(height=160, title="Altair spark trend (demo)")
+        .encode(x="month:O", y="response:Q", tooltip=["month", alt.Tooltip("response:Q", format=".2%")])
+        .properties(height=160, title="Campaign response trend (demo)")
         .configure_view(strokeWidth=0)
         .configure(background="transparent"),
         use_container_width=True,
@@ -247,14 +283,12 @@ def _tab_analytics(df_f: pd.DataFrame) -> None:
         st.plotly_chart(fig_retention_funnel(df_f), use_container_width=True)
     with g2:
         cols = [
-            "customer_age",
-            "account_balance",
-            "tenure_months",
-            "total_transactions",
-            "support_tickets",
-            "avg_order_value",
-            "churn",
-            "churn_proba",
+            "Income",
+            "Recency",
+            "MntWines",
+            "Total_Spending",
+            "Response",
+            "response_proba",
         ]
         st.plotly_chart(fig_correlation(df_f, cols), use_container_width=True)
         st.plotly_chart(fig_revenue_bubble(df_f), use_container_width=True)
@@ -293,31 +327,29 @@ def _tab_operations(df_f: pd.DataFrame, pipe: Any | None) -> None:
     st.subheader("Customer analytics table")
     show = df_f.copy()
     show["risk_level"] = pd.cut(
-        show["churn_proba"],
+        show["response_proba"],
         bins=[-0.01, 0.35, 0.65, 0.85, 1.0],
         labels=["Low", "Medium", "High", "Critical"],
     ).astype(str)
-    show["revenue_value"] = pd.to_numeric(show.get("avg_order_value"), errors="coerce").fillna(0) * pd.to_numeric(
-        show.get("total_transactions"), errors="coerce"
-    ).fillna(0)
-    show["support_score"] = pd.to_numeric(show.get("support_tickets"), errors="coerce").fillna(0)
+    show["revenue_value"] = show.get("Total_Spending", 0)
+    show["engagement_score"] = show.get("Purchases_Per_Month", 0)
     cols = [
-        "customer_id",
-        "churn_proba",
+        "ID",
+        "response_proba",
         "risk_level",
         "revenue_value",
-        "support_score",
-        "is_premium",
-        "tenure_months",
+        "engagement_score",
+        "Education",
+        "Age",
     ]
     cols = [c for c in cols if c in show.columns]
-    t = show[cols].sort_values("churn_proba", ascending=False)
+    t = show[cols].sort_values("response_proba", ascending=False)
     st.dataframe(
         t.head(500),
         use_container_width=True,
         hide_index=True,
         column_config={
-            "churn_proba": st.column_config.ProgressColumn(format="%.2f", min_value=0, max_value=1),
+            "response_proba": st.column_config.ProgressColumn(format="%.2f", min_value=0, max_value=1),
             "revenue_value": st.column_config.NumberColumn(format="$%d"),
         },
     )
@@ -336,21 +368,21 @@ def _tab_live(df_f: pd.DataFrame, mean_proba: float) -> None:
                 np.clip(mean_proba + np.random.default_rng(int(time.time()) % 1000).normal(0, 0.012), 0, 1)
             )
             slot.markdown(
-                f"**Live churn pressure** `{jitter:.2%}` · _tick {datetime.now().strftime('%H:%M:%S')}_ — "
+                f"**Live response pressure** `{jitter:.2%}` · _tick {datetime.now().strftime('%H:%M:%S')}_ — "
                 f"Pelanggan dipantau: **{len(df_f)}**"
             )
 
         _pulse()
     else:
-        slot.metric("Churn pressure (statis)", f"{mean_proba:.2%}")
+        slot.metric("Response pressure (statis)", f"{mean_proba:.2%}")
     st.caption("Panel live memakai `st.fragment` bila tersedia (Streamlit ≥ 1.33); jika tidak, tampil statis.")
 
-    st.markdown("##### Churn ticker (synthetic)")
-    risky = df_f.nlargest(8, "churn_proba") if "churn_proba" in df_f.columns else df_f.head(8)
+    st.markdown("##### Response ticker (synthetic)")
+    risky = df_f.nlargest(8, "response_proba") if "response_proba" in df_f.columns else df_f.head(8)
     for _, row in risky.iterrows():
         st.markdown(
-            f"<span class='exec-chip'>ID {row.get('customer_id', '?')}</span> "
-            f"<span class='exec-chip'>proba {row.get('churn_proba', 0):.0%}</span> "
-            f"<span class='exec-chip'>premium {row.get('is_premium', '')}</span>",
+            f"<span class='exec-chip'>ID {row.get('ID', '?')}</span> "
+            f"<span class='exec-chip'>proba {row.get('response_proba', 0):.0%}</span> "
+            f"<span class='exec-chip'>spending ${row.get('Total_Spending', 0):.0f}</span>",
             unsafe_allow_html=True,
         )

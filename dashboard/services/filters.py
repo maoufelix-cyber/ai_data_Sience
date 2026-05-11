@@ -30,7 +30,7 @@ def render_sidebar_filters(df: pd.DataFrame) -> dict:
     }
 
 
-def apply_filters(df: pd.DataFrame, f: dict, proba_col: str = "churn_proba") -> pd.DataFrame:
+def apply_filters(df: pd.DataFrame, f: dict, proba_col: str = "response_proba") -> pd.DataFrame:
     out = df.copy()
     if "_month" in out.columns:
         lo, hi = f["month_range"]

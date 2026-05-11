@@ -71,23 +71,21 @@ def fig_correlation(df: pd.DataFrame, cols: list[str]) -> go.Figure:
 
 
 def fig_revenue_bubble(df: pd.DataFrame) -> go.Figure:
-    if "churn_proba" not in df.columns:
+    if "response_proba" not in df.columns:
         return go.Figure()
     d = df.copy()
-    d["revenue_proxy"] = pd.to_numeric(d.get("avg_order_value", 0), errors="coerce").fillna(0) * pd.to_numeric(
-        d.get("total_transactions", 0), errors="coerce"
-    ).fillna(0)
-    d["risk_loss"] = d["churn_proba"] * d["revenue_proxy"]
+    d["revenue_proxy"] = d.get("Total_Spending", 0)
+    d["risk_loss"] = (1 - d["response_proba"]) * d["revenue_proxy"]  # Risk is lower response
     kw = dict(
         data_frame=d,
-        x="tenure_months",
-        y="churn_proba",
+        x="Age",
+        y="response_proba",
         size="risk_loss",
-        title="Revenue risk — bubble ∝ potensi hilang (proba × aktivitas)",
+        title="Revenue opportunity — bubble ∝ potensi response (proba × spending)",
         opacity=0.75,
     )
-    if "is_premium" in d.columns:
-        kw["color"] = "is_premium"
+    if "Education" in d.columns:
+        kw["color"] = "Education"
     if "support_tickets" in d.columns:
         kw["hover_data"] = ["support_tickets"]
     fig = px.scatter(**kw)
@@ -98,13 +96,12 @@ def fig_revenue_bubble(df: pd.DataFrame) -> go.Figure:
 
 def fig_clv_distribution(df: pd.DataFrame) -> go.Figure:
     d = df.copy()
-    d["clv_proxy"] = pd.to_numeric(d.get("avg_order_value", 0), errors="coerce").fillna(0) * pd.to_numeric(
-        d.get("total_transactions", 0), errors="coerce"
-    ).fillna(0) * 0.15
+    # Use Total_Spending for marketing campaign CLV proxy
+    d["clv_proxy"] = d.get("Total_Spending", 0) * 0.15  # 15% margin as CLV proxy
     fig = make_subplots(rows=1, cols=2, subplot_titles=("Histogram CLV proxy", "Violin"))
     fig.add_trace(go.Histogram(x=d["clv_proxy"], nbinsx=35, marker_color="#818cf8", name=""), row=1, col=1)
     fig.add_trace(
-        go.Violin(y=d["clv_proxy"], box_visible=True, meanline_visible=True, fillcolor="#22d3ee55", line_color="#22d3ee", name=""),
+        go.Violin(y=d["clv_proxy"], box_visible=True, meanline_visible=True, fillcolor="#22d3ee", line_color="#22d3ee", name=""),
         row=1,
         col=2,
     )
@@ -153,11 +150,11 @@ def fig_gauge_risk(mean_proba: float) -> go.Figure:
 
 
 def fig_pca_segments(df: pd.DataFrame) -> go.Figure:
-    need = {"segment_label", "churn"}
+    need = {"segment_label", "Response"}
     if not need.issubset(set(df.columns)):
         return go.Figure()
-    num = df.select_dtypes(include=[np.number]).drop(columns=["churn"], errors="ignore")
-    num = num.drop(columns=["churn_proba"], errors="ignore")
+    num = df.select_dtypes(include=[np.number]).drop(columns=["Response"], errors="ignore")
+    num = num.drop(columns=["response_proba"], errors="ignore")
     if num.shape[1] < 2:
         return go.Figure()
     from sklearn.decomposition import PCA

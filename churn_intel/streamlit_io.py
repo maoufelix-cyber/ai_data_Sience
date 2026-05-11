@@ -23,4 +23,4 @@ def load_pipeline():
 @st.cache_data
 def load_customer_table() -> pd.DataFrame:
     path = ensure_sample_csv()
-    return pd.read_csv(path)
+    return pd.read_csv(path, sep='\t', engine='python', on_bad_lines='skip')
