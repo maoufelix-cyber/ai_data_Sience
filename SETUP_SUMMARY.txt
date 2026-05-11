@@ -1,0 +1,120 @@
+DATA & CONFIG SETUP - RINGKASAN CEPAT
+═════════════════════════════════════
+
+✅ STATUS SEKARANG:
+───────────────────
+Data CSV:    data/raw/customers.csv (2000 records) ✓
+Config:      .streamlit/config.toml (optimized) ✓
+Dependencies: All installed ✓
+
+
+📊 3 OPSI SETUP DATA:
+──────────────────────
+
+┌─ OPSI 1: USE EXISTING DATA (RECOMMENDED) ─────────────────┐
+│ Status:    ✅ Ready                                        │
+│ Data:      2000 synthetic customer records                │
+│ Setup:     TIDAK PERLU - langsung pakai!                  │
+│                                                            │
+│ Jalankan:                                                  │
+│   streamlit run app/streamlit_app.py                       │
+└────────────────────────────────────────────────────────────┘
+
+┌─ OPSI 2: GENERATE NEW SYNTHETIC DATA ─────────────────────┐
+│ Untuk:     Ingin data baru atau jumlah berbeda            │
+│ Command:   python generate_data.py 5000 --replace         │
+│ Benefit:   Flexible, fresh data, tetap synthetic          │
+└────────────────────────────────────────────────────────────┘
+
+┌─ OPSI 3: IMPORT YOUR OWN REAL DATA ───────────────────────┐
+│ Untuk:     Production use dengan data real                │
+│ Command:   python import_real_data.py /path/to/data.csv   │
+│ Contoh:    python import_real_data.py data/raw/my_data.csv│
+│ Help:      python import_real_data.py --show-examples     │
+└────────────────────────────────────────────────────────────┘
+
+
+⚙️ CONFIG STREAMLIT:
+─────────────────────
+
+File:     .streamlit/config.toml
+Status:   ✅ OPTIMAL (sudah dikonfigurasi)
+
+Current Theme:
+  • Primary Color: #22d3ee (Cyan)
+  • Background: #050816 (Dark Navy)
+  • Text Color: #eef2ff (Light Gray)
+  • Font: sans-serif
+
+Untuk customize:
+  1. Edit .streamlit/config.toml
+  2. Ubah theme colors jika ingin
+  3. Restart streamlit app
+  4. Changes auto-reflect
+
+
+🚀 QUICK START (1 MENIT):
+──────────────────────────
+
+1. Buka terminal PowerShell
+2. cd "c:\Users\perpustakaan1\Downloads\Ai_data sience"
+3. .\.env\Scripts\Activate.ps1
+4. streamlit run app/streamlit_app.py
+5. Browser akan otomatis buka ke http://localhost:8501
+
+
+📁 FILE HELPER YANG TERSEDIA:
+──────────────────────────────
+
+• generate_data.py
+  └─ Generate synthetic data dengan custom volume
+  └─ Usage: python generate_data.py 5000 --replace
+
+• import_real_data.py
+  └─ Import dataset real dari CSV/Excel
+  └─ Usage: python import_real_data.py /path/to/data.csv
+
+• CONFIG_REFERENCE.py
+  └─ Reference untuk customize config.toml
+
+• SETUP_DATA_AND_CONFIG.py (ini!)
+  └─ Full setup guide
+
+
+✨ YANG SUDAH READY:
+────────────────────
+
+✅ Data CSV - existing atau bisa generate/import
+✅ Config - optimized, no changes needed
+✅ Python packages - all installed
+✅ Model - trained model ready (models/customer_churn_model.joblib)
+✅ All modules - churn_intel, dashboard, src, app
+✅ Database - auto-created saat app pertama kali dijalankan
+
+
+⚠️ CATATAN PENTING:
+────────────────────
+
+• Data CSV required: Harus ada 8 kolom (customer_age, account_balance, 
+  tenure_months, total_transactions, is_premium, support_tickets, 
+  avg_order_value, churn)
+
+• Import data real: Jika nama kolom berbeda, gunakan column_mapping
+  
+• Config optional: Anda bisa pakai default atau customize
+
+• Data size: Bisa dari 100 rows hingga 100,000 rows (tergantung RAM)
+
+
+🎯 REKOMENDASI:
+─────────────────
+
+Untuk mulai sekarang → OPSI 1 (gunakan data yang ada)
+Untuk test volume    → OPSI 2 (generate 5000-10000)
+Untuk production     → OPSI 3 (import real data)
+
+
+SELESAI! ✨
+
+Status: Ready to run
+Next: streamlit run app/streamlit_app.py
